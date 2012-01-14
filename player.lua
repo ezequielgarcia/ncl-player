@@ -1,34 +1,63 @@
 
 require 'lxp'
 
-local regions = {}
-local medias = {}
+-- _t defines the nodes we want to record fully
+local _t = {region={}, descriptor={}, media={}, port={}}
+
+-- doc defines the known structure of
+-- a ncl document
+local _doc = {
+	ncl = { 
+		head = { 
+			regionBase = { 
+				region = {} 
+			},
+			descriptorBase = { 
+				descriptor = {} 
+			}
+		},
+		body = {
+			port = {},
+			media = {
+				area = {},
+				property = {}
+			}
+		}
+	}
+}
 
 local function callbacks()
-	local state = {}
-	state.nodes = {}
-	state.level = 0 
+	local current = _doc
+	local stack = {}
 
 	local function open(name)
-		state.level = state.level + 1
-		state.nodes[state.level] = name
+		if not current[name] then
+			print('[W] unknown tag',name)
+			current[name] = {}
+		end
+		current = current[name]
+		table.insert(stack, name)
 	end
 
 	local function close(name)
-		if state.nodes[state.level] ~= name then
-			error('Evil ncl: try to close not current node ' .. name)
+
+		if stack[#stack] == name then
+			table.remove(stack, #stack)
+			if #stack > 0 then
+				-- Redo current, TODO: Is there a better way?
+				current = _doc
+				for i=1,#stack do
+					current = current[stack[i]]
+				end
+			end
+		else
+			error('[E] Evil ncl: trying to close not opened tag', name)
 		end
-		state.level = state.level - 1
 	end
 
 	local startElem = function (parser, name, attr)
 		open(name)
-
-		if name == 'region' then
-			table.insert(regions, attr)
-		elseif name == 'media' then
-			table.insert(medias, attr)
-		end
+		if _t[name] then _t[name][attr.id] = attr end
 	end
 
 	local endElem = function(parser, name)
@@ -45,15 +74,15 @@ for l in io.lines() do
 	p:parse(l)
 	p:parse("\n")
 end
-
-print('Medias found:')
-for k,v in pairs(medias) do
-	print(v.id)
-end
-print('Regions found:')
-for k,v in pairs(regions) do
-	print(v.id)
-end
-
 p:parse()
 p:close()
+
+print('--- regions:')
+for k,v in pairs(_t.region) do
+	print(k)
+end
+
+print('--- medias:')
+for k,v in pairs(_t.media) do
+	print(k)
+end
